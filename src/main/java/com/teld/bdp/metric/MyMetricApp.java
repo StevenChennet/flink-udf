@@ -1,4 +1,4 @@
-package com.teld.bdp.udf;
+package com.teld.bdp.metric;
 
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.configuration.ConfigConstants;
@@ -20,31 +20,57 @@ public class MyMetricApp {
         Configuration localConfig = new Configuration();
         localConfig.setBoolean(ConfigConstants.LOCAL_START_WEBSERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(localConfig);
-
+        /**
+         * 方便监控，将并行度设置为1
+         */
+        env.setParallelism(1);
+        env.disableOperatorChaining();
         DataStreamSource<Entity> source = env.addSource(new MySourceFunction());
 
+        /**
+         * 1.为方便监控，指定name为MyMap
+         * 2.方便演示，仅仅将结果Print
+         */
         source.map(new MyMapFun()).name("MyMap").print();
-
         env.execute("MyMetricApp");
     }
 
+    /**
+     * 主处理逻辑模拟
+     */
     private static class MyMapFun extends RichMapFunction<Entity, Entity> {
         private transient Counter myCounter;
+        private transient ThirdServiceMock thirdService;
 
         @Override
         public void open(Configuration parameters) throws Exception {
             super.open(parameters);
+            thirdService = new ThirdServiceMock();
+            /**
+             * Step1: 注册一个单独的Group，也可以用默认的Group
+             */
             MetricGroup metricGroup = getRuntimeContext().getMetricGroup().addGroup("MyMetric");
+            /**
+             * Step2：注册一个Counter
+             */
             this.myCounter = metricGroup.counter("MyCounter");
         }
 
         @Override
         public Entity map(Entity entity) throws Exception {
+            String desc = thirdService.callService(entity.getName());
+            entity.setDesc(desc);
+            /**
+             * Step3：对Couter加1
+             */
             myCounter.inc();
             return entity;
         }
     }
 
+    /**
+     * 模拟数据源
+     */
     public static class MySourceFunction extends RichSourceFunction<Entity> {
         @Override
         public void run(SourceContext<Entity> ctx) throws Exception {
@@ -67,8 +93,6 @@ public class MyMetricApp {
                     Entity.builder().id("14").name("zhouqi").age(20).country("jinan").build(),
                     Entity.builder().id("15").name("zhouqi").age(21).country("beijing").build()
             );
-
-
             // endregion
 
             int cnt = 0;
@@ -80,15 +104,10 @@ public class MyMetricApp {
                 ctx.collect(entity);
                 Thread.sleep(500L);
             }
-
-            //entityList.forEach(t->ctx.collect(t));
-
-
         }
 
         @Override
         public void cancel() {
-
         }
     }
 
@@ -99,5 +118,6 @@ public class MyMetricApp {
         private String name;
         private int age;
         private String country;
+        private String desc;
     }
 }

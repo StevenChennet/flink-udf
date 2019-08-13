@@ -1,4 +1,4 @@
-package com.teld.bdp.metric;
+package com.teld.bdp.udf;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.table.api.Types;
